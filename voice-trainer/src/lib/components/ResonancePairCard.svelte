@@ -7,10 +7,11 @@
   } from '$lib/data/resonance.js';
   import CommentMenu from './CommentMenu.svelte';
 
-  let { pair, playingSampleId, onPlay }: {
+  let { pair, playingSampleId, onPlay, owner = false }: {
     pair: ResonancePair;
     playingSampleId: string | null;
     onPlay: (s: ResonanceSample) => void;
+    owner?: boolean; // viewing your own pair: labels shown, no voting, results + moderation
   } = $props();
 
   // Random A/B order, fixed for this card instance so labels stay hidden.
@@ -34,11 +35,17 @@
 
   onMount(async () => {
     try {
-      const prior = await getMyResonanceVote(pair.id);
-      if (prior) {
-        chosenId = prior;
+      if (owner) {
+        // You own this pair: labels and votes are visible without voting.
         revealed = true;
         [stats, reveal] = await Promise.all([getResonanceStats(pair.id), getResonanceReveal(pair.id)]);
+      } else {
+        const prior = await getMyResonanceVote(pair.id);
+        if (prior) {
+          chosenId = prior;
+          revealed = true;
+          [stats, reveal] = await Promise.all([getResonanceStats(pair.id), getResonanceReveal(pair.id)]);
+        }
       }
       comments = await listPairComments(pair.id);
     } catch (e) { error = String(e); }
@@ -85,7 +92,7 @@
 
 <div class="card">
   <div class="phrase">“{pair.phrase}”</div>
-  <div class="prompt">{revealed ? 'You picked the brighter take:' : 'Which take sounds brighter?'}</div>
+  <div class="prompt">{owner ? 'How people voted on your pair:' : revealed ? 'You picked the brighter take:' : 'Which take sounds brighter?'}</div>
 
   <div class="takes">
     {#each order as s, i (s.id)}
@@ -109,10 +116,12 @@
   </div>
 
   {#if revealed}
-    <div class="result" class:ok={agreed}>
-      You chose the take the speaker labelled <strong>{chosenLabel === 'bright' ? 'Bright' : 'Deep'}</strong>
-      — {agreed ? 'you agreed with their labelling ✓' : 'they labelled the other take brighter.'}
-    </div>
+    {#if chosenId}
+      <div class="result" class:ok={agreed}>
+        You chose the take the speaker labelled <strong>{chosenLabel === 'bright' ? 'Bright' : 'Deep'}</strong>
+        — {agreed ? 'you agreed with their labelling ✓' : 'they labelled the other take brighter.'}
+      </div>
+    {/if}
 
     {#if stats && stats.total > 0}
       <div class="stats">
@@ -128,6 +137,8 @@
           <span class="bar-val">{pct(stats.deep)}% ({stats.deep})</span>
         </div>
       </div>
+    {:else if owner}
+      <p class="muted">No votes yet — others will guess once they find your pair.</p>
     {/if}
 
     <div class="thread">
@@ -136,18 +147,20 @@
           <div class="comment">
             <span class="c-author">{pairAuthorLabel(c)}</span>
             <span class="c-body">{c.body}</span>
-            {#if c.mine}<CommentMenu onDelete={() => removeComment(c)} />{/if}
+            {#if owner || c.mine}<CommentMenu onDelete={() => removeComment(c)} />{/if}
           </div>
         {/each}
       {:else}
-        <p class="muted">No comments yet — share what you heard.</p>
+        <p class="muted">{owner ? 'No comments yet.' : 'No comments yet — share what you heard.'}</p>
       {/if}
     </div>
-    <div class="compose">
-      <input class="c-input" bind:value={draft} placeholder="Leave a comment…" maxlength="2000"
-        onkeydown={(e) => { if (e.key === 'Enter') post(); }} />
-      <button class="post-btn" onclick={post} disabled={posting || !draft.trim()}>{posting ? '…' : 'Post'}</button>
-    </div>
+    {#if !owner}
+      <div class="compose">
+        <input class="c-input" bind:value={draft} placeholder="Leave a comment…" maxlength="2000"
+          onkeydown={(e) => { if (e.key === 'Enter') post(); }} />
+        <button class="post-btn" onclick={post} disabled={posting || !draft.trim()}>{posting ? '…' : 'Post'}</button>
+      </div>
+    {/if}
   {/if}
 
   {#if error}<p class="error">{error}</p>{/if}

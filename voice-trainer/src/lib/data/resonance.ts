@@ -62,6 +62,29 @@ export async function listPublicResonancePairs(limit = 100): Promise<ResonancePa
     .filter((p) => p.samples.length === 2);
 }
 
+/** Your own public pairs, newest first (for the "My shared" view). */
+export async function listMyPublicResonancePairs(limit = 100): Promise<ResonancePair[]> {
+  const me = await currentUserId();
+  const { data, error } = await supabase
+    .from('dataset_pairs')
+    .select('id, created_at, speaker_id, phrase:sample_phrases(text), samples:dataset_samples(id, storage_path)')
+    .eq('visibility', 'public')
+    .eq('speaker_id', me)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`Failed to load your shared pairs: ${error.message}`);
+
+  return (data as any[])
+    .map((p) => ({
+      id: p.id,
+      phrase: p.phrase?.text ?? '(phrase removed)',
+      authorId: p.speaker_id,
+      createdAt: Date.parse(p.created_at),
+      samples: (p.samples ?? []).map((s: any) => ({ id: s.id, storagePath: s.storage_path })),
+    }))
+    .filter((p) => p.samples.length === 2);
+}
+
 /**
  * Reveal the deep/bright label for each sample of a pair. Only returns data
  * once the current user has voted (or owns the pair) — enforced by RLS on
