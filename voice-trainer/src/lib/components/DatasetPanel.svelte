@@ -21,14 +21,24 @@
   const canSubmit = $derived(!!deepBlob && !!brightBlob && !!phrase && !submitting);
 
   onMount(async () => {
-    try { phrases = await listPhrases(); }
+    try {
+      phrases = await listPhrases();
+      if (phrases.length) phraseIdx = Math.floor(Math.random() * phrases.length);
+    }
     catch (e) { error = String(e); }
     finally { loading = false; }
   });
 
-  function changePhrase(delta: number) {
-    if (!phrases.length) return;
-    phraseIdx = (phraseIdx + delta + phrases.length) % phrases.length;
+  // Pick a random phrase index, avoiding an immediate repeat when possible.
+  function pickRandomIndex(): number {
+    if (phrases.length <= 1) return 0;
+    let i = Math.floor(Math.random() * phrases.length);
+    if (i === phraseIdx) i = (i + 1) % phrases.length;
+    return i;
+  }
+
+  function randomPhrase() {
+    phraseIdx = pickRandomIndex();
     resetTakes();
   }
 
@@ -46,8 +56,8 @@
       await submitPair(phrase.id, deepBlob, brightBlob);
       resetTakes();
       justSaved = true;
-      // advance to the next phrase to keep contributing
-      if (phrases.length > 1) phraseIdx = (phraseIdx + 1) % phrases.length;
+      // load a fresh random phrase to keep contributing
+      phraseIdx = pickRandomIndex();
     } catch (e) {
       error = String(e);
     } finally {
@@ -78,13 +88,15 @@
     <p class="muted">No sample phrases are available yet.</p>
   {:else}
     <div class="phrase-box">
-      <button class="nav" onclick={() => changePhrase(-1)} title="Previous phrase">‹</button>
-      <div class="phrase-text">
-        <div class="phrase-eyebrow">Phrase {phraseIdx + 1} of {phrases.length}</div>
-        “{phrase.text}”
-      </div>
-      <button class="nav" onclick={() => changePhrase(1)} title="Next phrase">›</button>
+      <div class="phrase-text">“{phrase.text}”</div>
+      <button class="random" onclick={randomPhrase}>🎲 New phrase</button>
     </div>
+
+    <p class="tip">
+      💡 Try to keep your <strong>pitch</strong> about the same across both takes — only your
+      <strong>resonance</strong> should change. The average pitch under each take helps you match
+      them, so listeners judge resonance and don't confuse it with pitch.
+    </p>
 
     {#key resetToken}
       <div class="pair-grid">
@@ -125,17 +137,29 @@
   .seg button { background: transparent; border: none; color: var(--muted); font-size: 0.8rem; font-weight: 600; padding: 0.4rem 0.9rem; cursor: pointer; }
   .seg button.active { background: var(--trans-pink); color: #0d0d24; }
 
-  .phrase-box { display: flex; align-items: stretch; gap: 0.75rem; margin: 1rem 0; }
+  .phrase-box { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin: 1rem 0; }
   .phrase-text {
-    flex: 1; text-align: center; font-size: 1.15rem; line-height: 1.5;
+    width: 100%; text-align: center; font-size: 1.15rem; line-height: 1.5;
     background: #0d0d24; border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1rem;
   }
-  .phrase-eyebrow { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.4rem; }
-  .nav {
-    flex-shrink: 0; width: 2.5rem; border: 1px solid var(--border); border-radius: 12px;
-    background: transparent; color: var(--muted); font-size: 1.4rem; cursor: pointer;
+  .random {
+    border: 1px solid var(--border); border-radius: 20px; background: transparent;
+    color: var(--muted); font-size: 0.82rem; font-weight: 600; padding: 0.4rem 1.1rem; cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
   }
-  .nav:hover { color: var(--text); }
+  .random:hover { color: var(--text); border-color: var(--trans-pink); }
+
+  .tip {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.55;
+    background: rgba(91,206,250,0.06);
+    border: 1px solid rgba(91,206,250,0.2);
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+    margin: 0.9rem 0;
+  }
+  .tip strong { color: var(--text); }
 
   .pair-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 560px) { .pair-grid { grid-template-columns: 1fr; } }

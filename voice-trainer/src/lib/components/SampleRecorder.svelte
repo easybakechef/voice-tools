@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { detectPitch } from '$lib/audio/wasm.js';
+  import { drawSpectrum } from '$lib/audio/drawing.js';
+  import { FFT_SIZE, SMOOTH } from '$lib/audio/constants.js';
 
   let { title, hint, accent, onBlob }: {
     title: string;
@@ -8,15 +11,27 @@
     onBlob: (b: Blob | null) => void;
   } = $props();
 
+  const BIN_GROUP = 6;
+
   let status    = $state<'idle' | 'recording' | 'recorded'>('idle');
   let blobUrl   = $state<string | null>(null);
   let isPlaying = $state(false);
   let error     = $state('');
+  let avgHz     = $state<number | null>(null);
   let audioEl   = $state<HTMLAudioElement | null>(null);
+  let canvas    = $state<HTMLCanvasElement | null>(null);
 
   let recorder: MediaRecorder | null = null;
   let stream: MediaStream | null = null;
   let chunks: Blob[] = [];
+
+  // Live analysis (own AudioContext, independent of the global engine).
+  let audioCtx: AudioContext | null = null;
+  let analyser: AnalyserNode | null = null;
+  let freqData: Float32Array<ArrayBuffer> | null = null;
+  let timeData: Float32Array<ArrayBuffer> | null = null;
+  let rafId = 0;
+  let pitches: number[] = [];
 
   function stopStream() {
     stream?.getTracks().forEach((t) => t.stop());
@@ -29,6 +44,38 @@
     onBlob(b);
   }
 
+  function startAnalysis() {
+    audioCtx = new AudioContext();
+    const src = audioCtx.createMediaStreamSource(stream!);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = FFT_SIZE;
+    analyser.smoothingTimeConstant = SMOOTH;
+    src.connect(analyser);
+    freqData = new Float32Array(analyser.frequencyBinCount);
+    timeData = new Float32Array(analyser.fftSize);
+    pitches = [];
+
+    const loop = () => {
+      rafId = requestAnimationFrame(loop);
+      if (!analyser || !audioCtx) return;
+      if (canvas) {
+        analyser.getFloatFrequencyData(freqData!);
+        drawSpectrum(canvas, freqData!, audioCtx.sampleRate, BIN_GROUP);
+      }
+      analyser.getFloatTimeDomainData(timeData!);
+      const hz = detectPitch(timeData!, audioCtx.sampleRate);
+      if (hz != null && hz >= 60 && hz <= 500) pitches.push(hz);
+    };
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function stopAnalysis() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    if (audioCtx) { void audioCtx.close(); audioCtx = null; }
+    analyser = null; freqData = null; timeData = null;
+  }
+
   async function start() {
     error = '';
     try {
@@ -38,6 +85,7 @@
       return;
     }
     chunks = [];
+    avgHz = null;
     recorder = new MediaRecorder(stream);
     recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     recorder.onstop = () => {
@@ -46,16 +94,20 @@
     };
     recorder.start();
     status = 'recording';
+    startAnalysis();
   }
 
   function stop() {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
+    avgHz = pitches.length ? Math.round(pitches.reduce((a, b) => a + b, 0) / pitches.length) : null;
+    stopAnalysis();
     status = 'recorded';
   }
 
   function rerecord() {
     if (audioEl) { audioEl.pause(); }
     isPlaying = false;
+    avgHz = null;
     setBlob(null);
     status = 'idle';
   }
@@ -68,6 +120,7 @@
 
   onDestroy(() => {
     if (recorder && recorder.state !== 'inactive') recorder.stop();
+    stopAnalysis();
     stopStream();
     if (blobUrl) URL.revokeObjectURL(blobUrl);
   });
@@ -81,6 +134,7 @@
     {#if status === 'idle'}
       <button class="big rec" onclick={start}>● Record</button>
     {:else if status === 'recording'}
+      <canvas bind:this={canvas} class="spectrum"></canvas>
       <button class="big stop" onclick={stop}><span class="pulse"></span>Stop</button>
     {:else}
       <div class="playback">
@@ -93,6 +147,10 @@
       </div>
       <div class="ready">✓ Take ready</div>
     {/if}
+  </div>
+
+  <div class="avg">
+    Avg pitch: <span class="avg-val">{avgHz != null ? `${avgHz} Hz` : '—'}</span>
   </div>
 
   {#if error}<p class="err">{error}</p>{/if}
@@ -118,6 +176,19 @@
   .r-hint { font-size: 0.76rem; color: var(--muted); line-height: 1.45; }
 
   .r-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; }
+
+  .spectrum { display: block; width: 100%; height: 96px; border-radius: 8px; background: #0d0d24; }
+
+  .avg {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-align: center;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+  }
+  .avg-val { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  .recorder.deep   .avg-val { color: #9b8cff; }
+  .recorder.bright .avg-val { color: var(--trans-pink); }
 
   .big {
     border: none; border-radius: 50px; cursor: pointer;
