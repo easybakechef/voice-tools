@@ -107,10 +107,11 @@ export async function submitPair(
 
 /** The current user's recorded pairs, newest first. */
 export async function listMyPairs(): Promise<DatasetPair[]> {
-  await currentUserId();
+  const me = await currentUserId();
   const { data, error } = await supabase
     .from('dataset_pairs')
     .select('id, created_at, visibility, phrase:sample_phrases(text), samples:dataset_samples(id, storage_path), labels:sample_labels(sample_id, label)')
+    .eq('speaker_id', me) // own only — RLS also allows reading public pairs, so filter explicitly
     .order('created_at', { ascending: false });
   if (error) throw new Error(`Failed to load your dataset: ${error.message}`);
 
