@@ -1,0 +1,88 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --trans-blue: #5BCEFA;
+  --trans-pink: #F5A9B8;
+  --bg:         #0f0f1a;
+  --panel:      #1a1a2e;
+  --border:     #2a2a4a;
+  --text:       #e8e8f0;
+  --muted:      #6b6b8a;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  gap: 1.5rem;
+}
+
+header { text-align: center; }
+header h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--trans-blue), var(--trans-pink));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.25rem;
+}
+header p { color: var(--muted); font-size: 0.9rem; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  width: 100%;
+  max-width: 760px;
+}
+.card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 760px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  background: linear-gradient(135deg, rgba(91,206,250,0.12), rgba(245,169,184,0.12));
+  color: var(--text);
+  border-bottom-color: var(--trans-pink);
+}
+
+.info {
+  max-width: 760px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.65;
+  text-align: center;
+}

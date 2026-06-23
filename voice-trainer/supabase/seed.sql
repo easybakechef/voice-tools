@@ -1,0 +1,8 @@
+-- Seed data for local development.
+--
+-- The app creates an anonymous auth user automatically the first time you load
+-- it (see src/lib/supabase/client.ts), and that user's profile is created by the
+-- on_auth_user_created trigger — so no seeding is required for the app to run.
+--
+-- This file is intentionally minimal. Add demo rows here if you want a populated
+-- library on `supabase db reset`.
