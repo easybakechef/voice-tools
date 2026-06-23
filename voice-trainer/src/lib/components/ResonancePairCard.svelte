@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    getMyResonanceVote, recordResonanceVote, getResonanceStats,
+    getMyResonanceVote, recordResonanceVote, getResonanceStats, getResonanceReveal,
     listPairComments, addPairComment, deletePairComment, pairAuthorLabel,
-    type ResonancePair, type ResonanceSample, type ResonanceStats, type PairComment,
+    type ResonancePair, type ResonanceSample, type ResonanceStats, type ResonanceReveal, type PairComment,
   } from '$lib/data/resonance.js';
   import CommentMenu from './CommentMenu.svelte';
 
@@ -20,6 +20,7 @@
 
   let chosenId  = $state<string | null>(null);
   let revealed  = $state(false);
+  let reveal    = $state<ResonanceReveal>({}); // sample id → label, only after voting
   let stats     = $state<ResonanceStats | null>(null);
   let busy      = $state(false);
   let error     = $state('');
@@ -28,13 +29,17 @@
   let draft    = $state('');
   let posting  = $state(false);
 
-  const chosen   = $derived(order.find((s) => s.id === chosenId) ?? null);
-  const agreed   = $derived(chosen?.label === 'bright'); // bright take is the "correct" brighter one
+  const chosenLabel = $derived(chosenId ? reveal[chosenId] ?? null : null);
+  const agreed      = $derived(chosenLabel === 'bright'); // bright take is the "correct" brighter one
 
   onMount(async () => {
     try {
       const prior = await getMyResonanceVote(pair.id);
-      if (prior) { chosenId = prior; revealed = true; stats = await getResonanceStats(pair.id); }
+      if (prior) {
+        chosenId = prior;
+        revealed = true;
+        [stats, reveal] = await Promise.all([getResonanceStats(pair.id), getResonanceReveal(pair.id)]);
+      }
       comments = await listPairComments(pair.id);
     } catch (e) { error = String(e); }
   });
@@ -46,7 +51,7 @@
       await recordResonanceVote(pair.id, s.id);
       chosenId = s.id;
       revealed = true;
-      stats = await getResonanceStats(pair.id);
+      [stats, reveal] = await Promise.all([getResonanceStats(pair.id), getResonanceReveal(pair.id)]);
     } catch (e) {
       error = String(e);
     } finally {
@@ -87,8 +92,8 @@
       <div class="take" class:chosen={chosenId === s.id} class:reveal={revealed}>
         <div class="take-head">
           <span class="ab">{i === 0 ? 'A' : 'B'}</span>
-          {#if revealed}
-            <span class="label {s.label}">{s.label === 'bright' ? 'Bright' : 'Deep'}</span>
+          {#if revealed && reveal[s.id]}
+            <span class="label {reveal[s.id]}">{reveal[s.id] === 'bright' ? 'Bright' : 'Deep'}</span>
           {/if}
         </div>
         <button class="play" class:playing={playingSampleId === s.id} onclick={() => onPlay(s)}>
@@ -105,7 +110,7 @@
 
   {#if revealed}
     <div class="result" class:ok={agreed}>
-      You chose the take the speaker labeled <strong>{chosen?.label === 'bright' ? 'Bright' : 'Deep'}</strong>
+      You chose the take the speaker labelled <strong>{chosenLabel === 'bright' ? 'Bright' : 'Deep'}</strong>
       — {agreed ? 'you agreed with their labelling ✓' : 'they labelled the other take brighter.'}
     </div>
 

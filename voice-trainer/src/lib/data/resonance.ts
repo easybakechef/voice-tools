@@ -11,9 +11,11 @@ import type { ResonanceLabel } from './dataset.js';
 
 export interface ResonanceSample {
   id: string;
-  label: ResonanceLabel; // hidden by the UI until the user has voted
-  storagePath: string;
+  storagePath: string; // opaque — the deep/bright label is NOT derivable from it
 }
+
+/** Map of sample id → label, only obtainable after voting (see getResonanceReveal). */
+export type ResonanceReveal = Record<string, ResonanceLabel>;
 
 export interface ResonancePair {
   id: string;
@@ -42,7 +44,7 @@ export async function listPublicResonancePairs(limit = 100): Promise<ResonancePa
   const me = await currentUserId();
   const { data, error } = await supabase
     .from('dataset_pairs')
-    .select('id, created_at, speaker_id, phrase:sample_phrases(text), samples:dataset_samples(id, label, storage_path)')
+    .select('id, created_at, speaker_id, phrase:sample_phrases(text), samples:dataset_samples(id, storage_path)')
     .eq('visibility', 'public')
     .neq('speaker_id', me)
     .order('created_at', { ascending: false })
@@ -55,13 +57,26 @@ export async function listPublicResonancePairs(limit = 100): Promise<ResonancePa
       phrase: p.phrase?.text ?? '(phrase removed)',
       authorId: p.speaker_id,
       createdAt: Date.parse(p.created_at),
-      samples: (p.samples ?? []).map((s: any) => ({
-        id: s.id,
-        label: s.label as ResonanceLabel,
-        storagePath: s.storage_path,
-      })),
+      samples: (p.samples ?? []).map((s: any) => ({ id: s.id, storagePath: s.storage_path })),
     }))
     .filter((p) => p.samples.length === 2);
+}
+
+/**
+ * Reveal the deep/bright label for each sample of a pair. Only returns data
+ * once the current user has voted (or owns the pair) — enforced by RLS on
+ * sample_labels, so an unvoted viewer gets an empty map.
+ */
+export async function getResonanceReveal(pairId: string): Promise<ResonanceReveal> {
+  await currentUserId();
+  const { data, error } = await supabase
+    .from('sample_labels')
+    .select('sample_id, label')
+    .eq('pair_id', pairId);
+  if (error) throw new Error(`Could not load reveal: ${error.message}`);
+  const map: ResonanceReveal = {};
+  for (const row of data as { sample_id: string; label: ResonanceLabel }[]) map[row.sample_id] = row.label;
+  return map;
 }
 
 /** Which sample (if any) the current user already picked as brighter. */

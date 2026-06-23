@@ -24,17 +24,16 @@ select lives_ok(
   'A can create a pair');
 
 select lives_ok(
-  $$ insert into public.dataset_samples (pair_id, speaker_id, label, storage_path) values
-     ('da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','deep',  'a0000000-0000-0000-0000-000000000001/dataset/da7a0000-deep-resonance.webm'),
-     ('da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','bright','a0000000-0000-0000-0000-000000000001/dataset/da7a0000-bright-resonance.webm') $$,
-  'A can add deep + bright samples');
+  $$ insert into public.dataset_samples (id, pair_id, speaker_id, storage_path) values
+     ('5a330000-0000-0000-0000-0000000000de','da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001/dataset/5a330000de.webm'),
+     ('5a330000-0000-0000-0000-0000000000b7','da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001/dataset/5a330000b7.webm') $$,
+  'A can add deep + bright samples (opaque paths, no label)');
 
--- one label per pair
-select throws_ok(
-  $$ insert into public.dataset_samples (pair_id, speaker_id, label, storage_path)
-     values ('da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','deep','x.webm') $$,
-  '23505', null,
-  'a pair cannot have two samples with the same label');
+select lives_ok(
+  $$ insert into public.sample_labels (sample_id, pair_id, speaker_id, label) values
+     ('5a330000-0000-0000-0000-0000000000de','da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','deep'),
+     ('5a330000-0000-0000-0000-0000000000b7','da7a0000-0000-0000-0000-000000000001','a0000000-0000-0000-0000-000000000001','bright') $$,
+  'A can label them deep + bright');
 
 -- ── B cannot see A's dataset ────────────────────────────────────────────────
 reset role;

@@ -205,37 +205,40 @@ async function main() {
   ];
   for (const r of RES) {
     const speaker = created[r.speaker];
-    const uuid = crypto.randomUUID();
-    const mk = (label, freq) => {
-      const path = `${speaker.uid}/dataset/${uuid}-${label}-resonance.webm`;
-      return { path, wav: makeWav(freq) };
-    };
-    const deep = mk('deep', 135);
-    const bright = mk('bright', 235);
+    const pairId = crypto.randomUUID();
+    const deepId = crypto.randomUUID();
+    const brightId = crypto.randomUUID();
+    // Opaque filenames (named by sample id, no label) so labels stay hidden.
+    const mk = (sampleId, freq) => ({ path: `${speaker.uid}/dataset/${sampleId}.webm`, wav: makeWav(freq) });
+    const deep = mk(deepId, 135);
+    const bright = mk(brightId, 235);
     for (const f of [deep, bright]) {
       const { error } = await supabase.storage.from('recordings').upload(f.path, f.wav, { contentType: 'audio/webm', upsert: true });
       if (error) throw error;
     }
     const { error: pErr } = await supabase.from('dataset_pairs')
-      .insert({ id: uuid, speaker_id: speaker.uid, phrase_id: phrases[r.phrase].id, visibility: 'public' });
+      .insert({ id: pairId, speaker_id: speaker.uid, phrase_id: phrases[r.phrase].id, visibility: 'public' });
     if (pErr) throw pErr;
-    const { data: samples, error: sErr } = await supabase.from('dataset_samples').insert([
-      { pair_id: uuid, speaker_id: speaker.uid, label: 'deep', storage_path: deep.path },
-      { pair_id: uuid, speaker_id: speaker.uid, label: 'bright', storage_path: bright.path },
-    ]).select('id, label');
+    const { error: sErr } = await supabase.from('dataset_samples').insert([
+      { id: deepId, pair_id: pairId, speaker_id: speaker.uid, storage_path: deep.path },
+      { id: brightId, pair_id: pairId, speaker_id: speaker.uid, storage_path: bright.path },
+    ]);
     if (sErr) throw sErr;
-    const brightId = samples.find((s) => s.label === 'bright').id;
-    const deepId = samples.find((s) => s.label === 'deep').id;
+    const { error: lErr } = await supabase.from('sample_labels').insert([
+      { sample_id: deepId, pair_id: pairId, speaker_id: speaker.uid, label: 'deep' },
+      { sample_id: brightId, pair_id: pairId, speaker_id: speaker.uid, label: 'bright' },
+    ]);
+    if (lErr) throw lErr;
     const votes = [
-      ...r.bright.map((v) => ({ pair_id: uuid, voter_id: created[v].uid, chosen_sample_id: brightId })),
-      ...r.deep.map((v) => ({ pair_id: uuid, voter_id: created[v].uid, chosen_sample_id: deepId })),
+      ...r.bright.map((v) => ({ pair_id: pairId, voter_id: created[v].uid, chosen_sample_id: brightId })),
+      ...r.deep.map((v) => ({ pair_id: pairId, voter_id: created[v].uid, chosen_sample_id: deepId })),
     ];
     if (votes.length) {
       const { error: vErr } = await supabase.from('resonance_votes').insert(votes);
       if (vErr) throw vErr;
     }
     const [ci, body] = r.comment;
-    await supabase.from('pair_comments').insert({ pair_id: uuid, author_id: created[ci].uid, body });
+    await supabase.from('pair_comments').insert({ pair_id: pairId, author_id: created[ci].uid, body });
   }
   console.log(`  ✓ ${RES.length} public resonance pairs with votes`);
 

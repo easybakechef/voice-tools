@@ -1,7 +1,7 @@
 -- Resonance community: visibility, blind voting, stats (npx supabase test db)
 
 begin;
-select plan(6);
+select plan(8);
 
 insert into auth.users (instance_id, id, aud, role, email, created_at, updated_at,
                         raw_app_meta_data, raw_user_meta_data, is_anonymous)
@@ -14,9 +14,12 @@ insert into public.sample_phrases (id, text, sort) values ('11110000-0000-0000-0
 -- A owns a pair (private by default) with a deep + bright sample.
 insert into public.dataset_pairs (id, speaker_id, phrase_id)
 values ('da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', '11110000-0000-0000-0000-000000000001');
-insert into public.dataset_samples (id, pair_id, speaker_id, label, storage_path) values
-  ('5a330000-0000-0000-0000-0000000000de', 'da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'deep',   'a/deep.webm'),
-  ('5a330000-0000-0000-0000-0000000000b7', 'da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'bright', 'a/bright.webm');
+insert into public.dataset_samples (id, pair_id, speaker_id, storage_path) values
+  ('5a330000-0000-0000-0000-0000000000de', 'da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'a/x1.webm'),
+  ('5a330000-0000-0000-0000-0000000000b7', 'da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'a/x2.webm');
+insert into public.sample_labels (sample_id, pair_id, speaker_id, label) values
+  ('5a330000-0000-0000-0000-0000000000de', 'da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'deep'),
+  ('5a330000-0000-0000-0000-0000000000b7', 'da7a0000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'bright');
 
 -- ── B cannot vote while the pair is private ─────────────────────────────────
 set local role authenticated;
@@ -43,10 +46,20 @@ select is(
   (select count(*) from public.dataset_samples where pair_id = 'da7a0000-0000-0000-0000-000000000001')::int,
   2, 'B can now see both samples of the public pair');
 
+-- The point of label-hiding: before voting, B cannot read the labels.
+select is(
+  (select count(*) from public.sample_labels where pair_id = 'da7a0000-0000-0000-0000-000000000001')::int,
+  0, 'B cannot read labels BEFORE voting');
+
 select lives_ok(
   $$ insert into public.resonance_votes (pair_id, voter_id, chosen_sample_id)
      values ('da7a0000-0000-0000-0000-000000000001','b0000000-0000-0000-0000-000000000002','5a330000-0000-0000-0000-0000000000b7') $$,
   'B can vote on the public pair (picked the bright take)');
+
+-- ...and after voting, the labels unlock for the reveal.
+select is(
+  (select label from public.sample_labels where sample_id = '5a330000-0000-0000-0000-0000000000b7')::text,
+  'bright', 'B can read labels AFTER voting (reveal)');
 
 select throws_ok(
   $$ insert into public.resonance_votes (pair_id, voter_id, chosen_sample_id)

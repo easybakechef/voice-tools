@@ -40,14 +40,16 @@ export async function listPhrases(): Promise<SamplePhrase[]> {
   return data as SamplePhrase[];
 }
 
-function objectPath(speakerId: string, uuid: string, label: ResonanceLabel) {
-  return `${speakerId}/dataset/${uuid}-${label}-resonance.webm`;
+// Opaque filename — names the file by the sample's random id, so the deep/bright
+// label is NOT discoverable from the storage path or signed URL.
+function objectPath(speakerId: string, sampleId: string) {
+  return `${speakerId}/dataset/${sampleId}.webm`;
 }
 
 /**
- * Submit both takes of a phrase as one pair. Uploads the two audio files
- * (sharing `uuid` in their names) and indexes the pair + samples. Returns the
- * shared uuid. Cleans up partial uploads on failure.
+ * Submit both takes of a phrase as one pair. Uploads the two audio files under
+ * opaque names, indexes the pair + samples, and records the (vote-gated) labels
+ * in sample_labels. Returns the pair uuid. Cleans up partial uploads on failure.
  */
 export async function submitPair(
   phraseId: string,
@@ -55,9 +57,11 @@ export async function submitPair(
   bright: Blob,
 ): Promise<string> {
   const speakerId = await currentUserId();
-  const uuid = crypto.randomUUID();
-  const deepPath = objectPath(speakerId, uuid, 'deep');
-  const brightPath = objectPath(speakerId, uuid, 'bright');
+  const pairId   = crypto.randomUUID();
+  const deepId   = crypto.randomUUID();
+  const brightId = crypto.randomUUID();
+  const deepPath   = objectPath(speakerId, deepId);
+  const brightPath = objectPath(speakerId, brightId);
   const uploaded: string[] = [];
 
   const upload = async (path: string, blob: Blob) => {
@@ -70,7 +74,7 @@ export async function submitPair(
 
   const cleanup = async () => {
     if (uploaded.length) await supabase.storage.from(BUCKET).remove(uploaded);
-    await supabase.from('dataset_pairs').delete().eq('id', uuid);
+    await supabase.from('dataset_pairs').delete().eq('id', pairId);
   };
 
   try {
@@ -79,16 +83,22 @@ export async function submitPair(
 
     const { error: pErr } = await supabase
       .from('dataset_pairs')
-      .insert({ id: uuid, speaker_id: speakerId, phrase_id: phraseId });
+      .insert({ id: pairId, speaker_id: speakerId, phrase_id: phraseId });
     if (pErr) throw new Error(`Could not save pair: ${pErr.message}`);
 
     const { error: sErr } = await supabase.from('dataset_samples').insert([
-      { pair_id: uuid, speaker_id: speakerId, label: 'deep', storage_path: deepPath },
-      { pair_id: uuid, speaker_id: speakerId, label: 'bright', storage_path: brightPath },
+      { id: deepId,   pair_id: pairId, speaker_id: speakerId, storage_path: deepPath },
+      { id: brightId, pair_id: pairId, speaker_id: speakerId, storage_path: brightPath },
     ]);
     if (sErr) throw new Error(`Could not index samples: ${sErr.message}`);
 
-    return uuid;
+    const { error: lErr } = await supabase.from('sample_labels').insert([
+      { sample_id: deepId,   pair_id: pairId, speaker_id: speakerId, label: 'deep' },
+      { sample_id: brightId, pair_id: pairId, speaker_id: speakerId, label: 'bright' },
+    ]);
+    if (lErr) throw new Error(`Could not save labels: ${lErr.message}`);
+
+    return pairId;
   } catch (e) {
     await cleanup();
     throw e;
@@ -100,19 +110,24 @@ export async function listMyPairs(): Promise<DatasetPair[]> {
   await currentUserId();
   const { data, error } = await supabase
     .from('dataset_pairs')
-    .select('id, created_at, visibility, phrase:sample_phrases(text), samples:dataset_samples(label, storage_path)')
+    .select('id, created_at, visibility, phrase:sample_phrases(text), samples:dataset_samples(id, storage_path), labels:sample_labels(sample_id, label)')
     .order('created_at', { ascending: false });
   if (error) throw new Error(`Failed to load your dataset: ${error.message}`);
 
   return (data as any[]).map((p) => {
-    const samples: { label: ResonanceLabel; storage_path: string }[] = p.samples ?? [];
+    const samples: { id: string; storage_path: string }[] = p.samples ?? [];
+    const labels: { sample_id: string; label: ResonanceLabel }[] = p.labels ?? [];
+    const pathFor = (label: ResonanceLabel) => {
+      const sid = labels.find((l) => l.label === label)?.sample_id;
+      return samples.find((s) => s.id === sid)?.storage_path ?? null;
+    };
     return {
       id: p.id,
       createdAt: Date.parse(p.created_at),
       visibility: p.visibility as PairVisibility,
       phrase: p.phrase?.text ?? '(phrase removed)',
-      deepPath: samples.find((s) => s.label === 'deep')?.storage_path ?? null,
-      brightPath: samples.find((s) => s.label === 'bright')?.storage_path ?? null,
+      deepPath: pathFor('deep'),
+      brightPath: pathFor('bright'),
     };
   });
 }
