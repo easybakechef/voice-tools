@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listPublicRecordings, getAudioUrl, type PublicRecording } from '$lib/data/recordings.js';
+  import { listPublicRecordings, listMyPublicRecordings, getAudioUrl, type PublicRecording } from '$lib/data/recordings.js';
   import { engine } from '$lib/audio/engine.svelte.js';
   import PublicRecordingCard from './PublicRecordingCard.svelte';
+
+  type View = 'others' | 'mine';
+  let view = $state<View>('others');
 
   let recordings = $state<PublicRecording[]>([]);
   let loading    = $state(true);
@@ -13,9 +16,9 @@
     loading = true;
     error = '';
     try {
-      recordings = await listPublicRecordings();
+      recordings = view === 'mine' ? await listMyPublicRecordings() : await listPublicRecordings();
     } catch (e) {
-      error = `Could not load the community feed — is Supabase running?`;
+      error = `Could not load recordings — is Supabase running?`;
       console.error(e);
     } finally {
       loading = false;
@@ -23,6 +26,14 @@
   }
 
   onMount(load);
+
+  function switchView(v: View) {
+    if (v === view) return;
+    engine.stopAll();
+    playingId = null;
+    view = v;
+    load();
+  }
 
   // Reset our local "playing" marker whenever the shared engine stops.
   $effect(() => {
@@ -44,25 +55,40 @@
 <div class="card">
   <div class="card-head">
     <div>
-      <div class="card-label">Community Feedback</div>
-      <p class="intro">Listen to recordings others have shared and leave them feedback.</p>
+      <div class="card-label">{view === 'mine' ? 'My Shared Recordings' : 'Community Feedback'}</div>
+      <p class="intro">
+        {view === 'mine'
+          ? 'Your public recordings and the feedback others have left on them.'
+          : 'Listen to recordings others have shared and leave them feedback.'}
+      </p>
     </div>
     <button class="refresh" onclick={load} disabled={loading}>↻ Refresh</button>
   </div>
 
+  <div class="seg">
+    <button class:active={view === 'others'} onclick={() => switchView('others')}>Community</button>
+    <button class:active={view === 'mine'} onclick={() => switchView('mine')}>My shared</button>
+  </div>
+
   {#if loading}
-    <p class="muted">Loading shared recordings…</p>
+    <p class="muted">Loading recordings…</p>
   {:else if error}
     <p class="error">{error}</p>
   {:else if !recordings.length}
-    <p class="muted">
-      No shared recordings yet. When someone marks a recording public on their
-      Library → Feedback tab, it shows up here.
-    </p>
+    {#if view === 'mine'}
+      <p class="muted">
+        You haven't shared any recordings yet. Mark a recording public on the
+        Recording → Library → Feedback tab and it will appear here.
+      </p>
+    {:else}
+      <p class="muted">
+        No shared recordings yet. When someone marks a recording public, it shows up here.
+      </p>
+    {/if}
   {:else}
     <div class="feed">
       {#each recordings as rec (rec.id)}
-        <PublicRecordingCard recording={rec} isPlaying={playingId === rec.id} onPlay={play} />
+        <PublicRecordingCard recording={rec} isPlaying={playingId === rec.id} onPlay={play} mine={view === 'mine'} />
       {/each}
     </div>
   {/if}
@@ -84,6 +110,10 @@
   }
   .refresh:hover:not(:disabled) { color: var(--text); }
   .refresh:disabled { opacity: 0.5; cursor: default; }
+
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; margin-top: 0.85rem; }
+  .seg button { background: transparent; border: none; color: var(--muted); font-size: 0.8rem; font-weight: 600; padding: 0.4rem 1.1rem; cursor: pointer; }
+  .seg button.active { background: var(--trans-pink); color: #0d0d24; }
 
   .feed { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
   .muted { color: var(--muted); font-size: 0.85rem; line-height: 1.6; margin-top: 1rem; }

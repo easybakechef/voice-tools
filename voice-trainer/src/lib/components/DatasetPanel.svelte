@@ -59,8 +59,8 @@
 <div class="card">
   <div class="card-head">
     <div>
-      <div class="card-label">Record a Dataset Pair</div>
-      <p class="intro">Read the sentence twice — once deep, once bright — then submit both takes.</p>
+      <div class="card-label">Resonance Recording</div>
+      <p class="intro">Read the sentence twice — once with deep resonance, once bright — then submit both takes. You can publish a pair for community review from “My recordings”.</p>
     </div>
     <div class="seg">
       <button class:active={mode === 'record'} onclick={() => (mode = 'record')}>Record</button>

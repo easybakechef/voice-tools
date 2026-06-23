@@ -90,7 +90,11 @@ async function cleanup() {
     if (files?.length) {
       await supabase.storage.from('recordings').remove(files.map((f) => `${u.id}/${f.name}`));
     }
-    await supabase.auth.admin.deleteUser(u.id); // cascades recordings + comments
+    const { data: dsFiles } = await supabase.storage.from('recordings').list(`${u.id}/dataset`);
+    if (dsFiles?.length) {
+      await supabase.storage.from('recordings').remove(dsFiles.map((f) => `${u.id}/dataset/${f.name}`));
+    }
+    await supabase.auth.admin.deleteUser(u.id); // cascades recordings + comments + pairs
   }
   if (stale.length) console.log(`Removed ${stale.length} prior fake user(s).`);
 }
@@ -192,7 +196,50 @@ async function main() {
   if (voteErr) throw voteErr;
   console.log(`  ✓ comparison set with ${VOTES.length} votes`);
 
-  console.log('\nDone. Open the 💬 Community and 🏆 Rank tabs to see them.');
+  // ── Public resonance pairs (for the 🎧 Resonance Community tab) ─────────────
+  const { data: phrases } = await supabase.from('sample_phrases').select('id').order('sort').limit(3);
+  // Each entry: speaker index, phrase index, [bright-voter indices], [deep-voter indices], comment
+  const RES = [
+    { speaker: 0, phrase: 0, bright: [1, 2], deep: [3], comment: [2, 'The bright take is so much more forward — lovely!'] },
+    { speaker: 2, phrase: 1, bright: [0, 1, 3], deep: [],  comment: [1, 'Clear difference, nicely done.'] },
+  ];
+  for (const r of RES) {
+    const speaker = created[r.speaker];
+    const uuid = crypto.randomUUID();
+    const mk = (label, freq) => {
+      const path = `${speaker.uid}/dataset/${uuid}-${label}-resonance.webm`;
+      return { path, wav: makeWav(freq) };
+    };
+    const deep = mk('deep', 135);
+    const bright = mk('bright', 235);
+    for (const f of [deep, bright]) {
+      const { error } = await supabase.storage.from('recordings').upload(f.path, f.wav, { contentType: 'audio/webm', upsert: true });
+      if (error) throw error;
+    }
+    const { error: pErr } = await supabase.from('dataset_pairs')
+      .insert({ id: uuid, speaker_id: speaker.uid, phrase_id: phrases[r.phrase].id, visibility: 'public' });
+    if (pErr) throw pErr;
+    const { data: samples, error: sErr } = await supabase.from('dataset_samples').insert([
+      { pair_id: uuid, speaker_id: speaker.uid, label: 'deep', storage_path: deep.path },
+      { pair_id: uuid, speaker_id: speaker.uid, label: 'bright', storage_path: bright.path },
+    ]).select('id, label');
+    if (sErr) throw sErr;
+    const brightId = samples.find((s) => s.label === 'bright').id;
+    const deepId = samples.find((s) => s.label === 'deep').id;
+    const votes = [
+      ...r.bright.map((v) => ({ pair_id: uuid, voter_id: created[v].uid, chosen_sample_id: brightId })),
+      ...r.deep.map((v) => ({ pair_id: uuid, voter_id: created[v].uid, chosen_sample_id: deepId })),
+    ];
+    if (votes.length) {
+      const { error: vErr } = await supabase.from('resonance_votes').insert(votes);
+      if (vErr) throw vErr;
+    }
+    const [ci, body] = r.comment;
+    await supabase.from('pair_comments').insert({ pair_id: uuid, author_id: created[ci].uid, body });
+  }
+  console.log(`  ✓ ${RES.length} public resonance pairs with votes`);
+
+  console.log('\nDone. Open the 💬 Free Form Community and 🎧 Resonance Community tabs to see them.');
 }
 
 main().catch((e) => {

@@ -4,10 +4,11 @@
   import { listComments, addComment, deleteComment, authorLabel, type FeedbackComment } from '$lib/data/feedback.js';
   import CommentMenu from './CommentMenu.svelte';
 
-  let { recording, isPlaying, onPlay }: {
+  let { recording, isPlaying, onPlay, mine = false }: {
     recording: PublicRecording;
     isPlaying: boolean;
     onPlay: (rec: PublicRecording) => void;
+    mine?: boolean; // viewing your own shared recording (no compose, owner moderation)
   } = $props();
 
   let comments = $state<FeedbackComment[]>([]);
@@ -63,7 +64,9 @@
   <div class="head">
     <div class="head-text">
       <div class="title">{recording.name}</div>
-      <div class="sub">by Anon {recording.authorId.slice(0, 6)} · {fmtDate(recording.date)}</div>
+      <div class="sub">
+        {mine ? 'You' : `by Anon ${recording.authorId.slice(0, 6)}`} · {fmtDate(recording.date)}
+      </div>
     </div>
     <button class="play-btn" class:playing={isPlaying} onclick={() => onPlay(recording)}>
       {isPlaying ? '■ Stop' : '▶ Play'}
@@ -89,28 +92,30 @@
         <div class="comment" class:mine={c.mine}>
           <span class="c-author">{authorLabel(c)}</span>
           <span class="c-body">{c.body}</span>
-          {#if c.mine}
+          {#if mine || c.mine}
             <CommentMenu onDelete={() => remove(c)} />
           {/if}
         </div>
       {/each}
     {:else}
-      <p class="muted">No feedback yet — be the first.</p>
+      <p class="muted">{mine ? 'No feedback yet on this recording.' : 'No feedback yet — be the first.'}</p>
     {/if}
   </div>
 
-  <div class="compose">
-    <input
-      class="c-input"
-      bind:value={draft}
-      placeholder="Leave feedback…"
-      maxlength="2000"
-      onkeydown={(e) => { if (e.key === 'Enter') post(); }}
-    />
-    <button class="post-btn" onclick={post} disabled={posting || !draft.trim()}>
-      {posting ? '…' : 'Post'}
-    </button>
-  </div>
+  {#if !mine}
+    <div class="compose">
+      <input
+        class="c-input"
+        bind:value={draft}
+        placeholder="Leave feedback…"
+        maxlength="2000"
+        onkeydown={(e) => { if (e.key === 'Enter') post(); }}
+      />
+      <button class="post-btn" onclick={post} disabled={posting || !draft.trim()}>
+        {posting ? '…' : 'Post'}
+      </button>
+    </div>
+  {/if}
   {#if error}<p class="error">{error}</p>{/if}
 </div>
 

@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { listMyPairs, deletePair, getSampleUrl, type DatasetPair } from '$lib/data/dataset.js';
+  import { listMyPairs, deletePair, setPairVisibility, getSampleUrl, type DatasetPair } from '$lib/data/dataset.js';
 
   let pairs   = $state<DatasetPair[]>([]);
   let loading = $state(true);
   let error   = $state('');
   let playing = $state<string | null>(null); // `${pairId}:${label}`
   let busyId  = $state<string | null>(null);
+  let pubId   = $state<string | null>(null);
 
   let audio: HTMLAudioElement | null = null;
 
@@ -49,6 +50,20 @@
     }
   }
 
+  async function togglePublic(pair: DatasetPair) {
+    if (pubId) return;
+    pubId = pair.id;
+    const next = pair.visibility === 'public' ? 'private' : 'public';
+    try {
+      await setPairVisibility(pair.id, next);
+      pairs = pairs.map((p) => (p.id === pair.id ? { ...p, visibility: next } : p));
+    } catch (e) {
+      error = String(e);
+    } finally {
+      pubId = null;
+    }
+  }
+
   function fmtDate(ts: number) {
     return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
@@ -67,7 +82,10 @@
     {#each pairs as p (p.id)}
       <li class="pair">
         <div class="pair-main">
-          <div class="phrase">“{p.phrase}”</div>
+          <div class="phrase">
+            “{p.phrase}”
+            {#if p.visibility === 'public'}<span class="pub-badge">🌐 Public</span>{/if}
+          </div>
           <div class="meta">{fmtDate(p.createdAt)} · <span class="uuid">{p.id.slice(0, 8)}</span></div>
           <div class="takes">
             <button class="take deep" class:on={playing === `${p.id}:deep`} disabled={!p.deepPath} onclick={() => play(p.id, 'deep', p.deepPath)}>
@@ -78,9 +96,14 @@
             </button>
           </div>
         </div>
-        <button class="del" disabled={busyId === p.id} title="Delete pair" onclick={() => remove(p)}>
-          {busyId === p.id ? '…' : '🗑'}
-        </button>
+        <div class="pair-actions">
+          <button class="pub" class:on={p.visibility === 'public'} disabled={pubId === p.id} onclick={() => togglePublic(p)}>
+            {pubId === p.id ? '…' : p.visibility === 'public' ? 'Make private' : 'Make public'}
+          </button>
+          <button class="del" disabled={busyId === p.id} title="Delete pair" onclick={() => remove(p)}>
+            {busyId === p.id ? '…' : '🗑'}
+          </button>
+        </div>
       </li>
     {/each}
   </ul>
@@ -93,6 +116,15 @@
     background: #12122a; border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem;
   }
   .pair-main { flex: 1; min-width: 0; }
+  .pub-badge { font-size: 0.66rem; color: var(--trans-blue); margin-left: 0.4rem; font-weight: 700; }
+  .pair-actions { display: flex; flex-direction: column; gap: 0.35rem; flex-shrink: 0; align-items: stretch; }
+  .pub {
+    border-radius: 8px; cursor: pointer; font-size: 0.72rem; font-weight: 700; padding: 0.35rem 0.7rem;
+    border: 1px solid rgba(91,206,250,0.4); background: rgba(91,206,250,0.1); color: var(--trans-blue);
+    white-space: nowrap;
+  }
+  .pub.on { border-color: rgba(231,76,111,0.4); background: rgba(231,76,111,0.1); color: #e74c6f; }
+  .pub:disabled { opacity: 0.5; cursor: default; }
   .phrase { font-size: 0.9rem; font-weight: 600; }
   .meta { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
   .uuid { font-family: ui-monospace, monospace; }

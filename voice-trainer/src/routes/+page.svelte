@@ -6,27 +6,29 @@
   import CommunityPanel from '$lib/components/CommunityPanel.svelte';
   import RankPanel      from '$lib/components/RankPanel.svelte';
   import DatasetPanel   from '$lib/components/DatasetPanel.svelte';
+  import ResonanceCommunityPanel from '$lib/components/ResonanceCommunityPanel.svelte';
   import AnalysisView   from '$lib/components/AnalysisView.svelte';
   import SnapshotCard   from '$lib/components/SnapshotCard.svelte';
 
-  type Section = 'recording' | 'community' | 'rank' | 'dataset';
+  type Section = 'resonance' | 'resonance-community' | 'rank' | 'freeform' | 'freeform-community';
   type RecTab  = 'live' | 'library' | 'playback';
 
   const NAV = [
-    { id: 'recording', label: 'Recording', icon: '🎙' },
-    { id: 'community', label: 'Community', icon: '💬' },
-    { id: 'rank',      label: 'Rank',      icon: '🏆' },
-    { id: 'dataset',   label: 'Dataset',   icon: '📚' },
+    { id: 'resonance',           label: 'Resonance Recording', icon: '🎙' },
+    { id: 'resonance-community', label: 'Resonance Community',  icon: '🎧' },
+    { id: 'rank',                label: 'Rank',                 icon: '🏆' },
+    { id: 'freeform',            label: 'Free Form',            icon: '🎤' },
+    { id: 'freeform-community',  label: 'Free Form Community',  icon: '💬' },
   ] as const;
 
-  let section = $state<Section>('recording');
+  let section = $state<Section>('resonance');
   let recTab  = $state<RecTab>('live');
 
   function selectSection(s: Section) {
     if (s === section) return;
     engine.stopAll();
     section = s;
-    if (s === 'recording') recTab = 'live'; // always open on Live Recording
+    if (s === 'freeform') recTab = 'live'; // Free Form always opens on Live Recording
   }
 
   function selectRecTab(t: RecTab) {
@@ -55,7 +57,13 @@
   </aside>
 
   <main class="content">
-    {#if section === 'recording'}
+    {#if section === 'resonance'}
+      <DatasetPanel />
+    {:else if section === 'resonance-community'}
+      <ResonanceCommunityPanel />
+    {:else if section === 'rank'}
+      <RankPanel />
+    {:else if section === 'freeform'}
       <div class="tabs">
         <button class="tab-btn" class:active={recTab === 'live'}     onclick={() => selectRecTab('live')}>
           🎤 Live Recording
@@ -90,12 +98,8 @@
           Upload your own recording (e.g. from a voice memo app) for personal voice analysis.
         </em>
       </p>
-    {:else if section === 'community'}
-      <CommunityPanel />
-    {:else if section === 'rank'}
-      <RankPanel />
     {:else}
-      <DatasetPanel />
+      <CommunityPanel />
     {/if}
   </main>
 </div>

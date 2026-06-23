@@ -4,7 +4,7 @@ build
 .env
 .env.*
 !.env.example
-data/
+/data/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 src/lib/wasm/**/*.wasm
