@@ -7,10 +7,13 @@
   import RankPanel      from '$lib/components/RankPanel.svelte';
   import DatasetPanel   from '$lib/components/DatasetPanel.svelte';
   import ResonanceCommunityPanel from '$lib/components/ResonanceCommunityPanel.svelte';
+  import AccountPanel   from '$lib/components/AccountPanel.svelte';
   import AnalysisView   from '$lib/components/AnalysisView.svelte';
+  import ResonanceBar   from '$lib/components/ResonanceBar.svelte';
   import SnapshotCard   from '$lib/components/SnapshotCard.svelte';
+  import { auth } from '$lib/supabase/auth.svelte.js';
 
-  type Section = 'resonance' | 'resonance-community' | 'rank' | 'freeform' | 'freeform-community';
+  type Section = 'resonance' | 'resonance-community' | 'rank' | 'freeform' | 'freeform-community' | 'account';
   type RecTab  = 'live' | 'library' | 'playback';
 
   const NAV = [
@@ -23,6 +26,8 @@
 
   let section = $state<Section>('resonance');
   let recTab  = $state<RecTab>('live');
+
+  auth.init();
 
   function selectSection(s: Section) {
     if (s === section) return;
@@ -54,6 +59,14 @@
         <span class="nav-icon">{item.icon}</span>{item.label}
       </button>
     {/each}
+
+    <button class="nav-item account" class:active={section === 'account'} onclick={() => selectSection('account')}>
+      <span class="nav-icon">👤</span>
+      <span class="account-text">
+        Account
+        <span class="account-sub">{auth.isSignedIn ? auth.label : 'Guest — not saved'}</span>
+      </span>
+    </button>
   </aside>
 
   <main class="content">
@@ -78,12 +91,14 @@
 
       {#if recTab === 'live'}
         <RecordPanel />
+        <ResonanceBar />
         <AnalysisView />
         <SnapshotCard />
       {:else if recTab === 'library'}
         <LibraryPanel />
       {:else}
         <PlaybackPanel />
+        <ResonanceBar />
         <AnalysisView />
         <SnapshotCard clipMode={true} />
       {/if}
@@ -98,8 +113,10 @@
           Upload your own recording (e.g. from a voice memo app) for personal voice analysis.
         </em>
       </p>
-    {:else}
+    {:else if section === 'freeform-community'}
       <CommunityPanel />
+    {:else}
+      <AccountPanel />
     {/if}
   </main>
 </div>
@@ -148,6 +165,10 @@
     color: var(--text);
   }
   .nav-icon { font-size: 1.05rem; line-height: 1; }
+
+  .nav-item.account { margin-top: 0.4rem; border-top: 1px solid var(--border); padding-top: 0.7rem; border-radius: 0 0 8px 8px; align-items: flex-start; }
+  .account-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+  .account-sub { font-size: 0.68rem; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
 
   .content {
     flex: 1;

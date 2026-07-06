@@ -43,37 +43,54 @@ pub fn detect_pitch(samples: &[f32], sample_rate: f32) -> f32 {
 
     let min_period = (sample_rate / MAX_HZ).floor() as usize;
     let max_period = ((sample_rate / MIN_HZ).ceil() as usize).min(samples.len() / 2);
-
-    let mut best_tau = 0usize;
-    let mut best_val = f32::NEG_INFINITY;
-
-    for tau in min_period..=max_period {
-        let r = nsdf(samples, tau);
-        if r > best_val {
-            best_val = r;
-            best_tau = tau;
-        }
-    }
-
-    if best_val < CLARITY_THRESHOLD || best_tau == 0 {
+    if max_period < min_period + 2 {
         return 0.0;
     }
 
-    // Parabolic interpolation for sub-sample period accuracy
-    let a = if best_tau > 0 { nsdf(samples, best_tau - 1) } else { 0.0 };
-    let b = best_val;
-    let c = if best_tau < samples.len() / 2 {
-        nsdf(samples, best_tau + 1)
+    // NSDF across the search range.
+    let n = max_period - min_period + 1;
+    let mut r = vec![0f32; n];
+    for t in min_period..=max_period {
+        r[t - min_period] = nsdf(samples, t);
+    }
+
+    // Proper McLeod method: octave errors come from picking the *tallest* peak
+    // (often the period-doubled one). Instead pick the FIRST local maximum that
+    // is within 88% of the tallest.
+    let mut max_val = f32::NEG_INFINITY;
+    let mut peaks: Vec<usize> = Vec::new();
+    for i in 1..n - 1 {
+        if r[i] > r[i - 1] && r[i] >= r[i + 1] {
+            peaks.push(i);
+            if r[i] > max_val {
+                max_val = r[i];
+            }
+        }
+    }
+    if peaks.is_empty() || max_val < CLARITY_THRESHOLD {
+        return 0.0;
+    }
+
+    let thresh = 0.88 * max_val;
+    let mut chosen = peaks[0];
+    for &p in &peaks {
+        if r[p] >= thresh {
+            chosen = p;
+            break;
+        }
+    }
+
+    // Parabolic interpolation around the chosen peak.
+    let a = if chosen > 0 { r[chosen - 1] } else { r[chosen] };
+    let b = r[chosen];
+    let c = if chosen < n - 1 { r[chosen + 1] } else { r[chosen] };
+    let denom = a - 2.0 * b + c;
+    let offset = if denom.abs() > 1e-6 { -0.5 * (a - c) / denom } else { 0.0 };
+    let tau = (min_period + chosen) as f32 + offset;
+
+    if tau > 0.0 {
+        sample_rate / tau
     } else {
         0.0
-    };
-
-    let denom = a - 2.0 * b + c;
-    let refined = if denom.abs() > 1e-6 {
-        best_tau as f32 - 0.5 * (a - c) / denom
-    } else {
-        best_tau as f32
-    };
-
-    sample_rate / refined
+    }
 }

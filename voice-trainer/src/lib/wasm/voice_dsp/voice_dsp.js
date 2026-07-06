@@ -1,5 +1,9 @@
-// Stub — overwritten by `npm run wasm` once the Rust crate is built.
-// While this file is present, the app uses the JS pitch-detection fallback in wasm.ts.
+/* @ts-self-types="./voice_dsp.d.ts" */
+import * as wasm from "./voice_dsp_bg.wasm";
+import { __wbg_set_wasm } from "./voice_dsp_bg.js";
 
-export function detect_pitch(_samples, _sample_rate) { return 0; }
-export default async function init() { throw new Error('WASM not built — run `npm run wasm`'); }
+__wbg_set_wasm(wasm);
+wasm.__wbindgen_start();
+export {
+    detect_pitch
+} from "./voice_dsp_bg.js";

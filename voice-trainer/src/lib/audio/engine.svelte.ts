@@ -1,6 +1,7 @@
 import { FFT_SIZE, SMOOTH, TARGET_LO, TARGET_HI, CLIPS, CLIP_DUR } from './constants.js';
 import type { ActiveType, PitchPoint } from './types.js';
 import { detectPitch, tryLoadWasm } from './wasm.js';
+import { computeResonance } from './resonance.js';
 
 class AudioEngine {
   // ── Reactive UI state ────────────────────────────────────────────────────
@@ -9,6 +10,8 @@ class AudioEngine {
   smoothPitch   = $state<number | null>(null);
   pitchHint     = $state('');
   pitchInTarget = $state(false);
+  resonance      = $state<number | null>(null);  // 0–100 brightness, live
+  resonanceVowel = $state<string | null>(null);
   monitorEnabled = $state(false);
   binGroup      = $state(1);
   snapshotReady = $state(false);
@@ -47,6 +50,11 @@ class AudioEngine {
   #frameCount     = 0;
   #pauseStartTime = 0;
   #totalPausedMs  = 0;
+  #smF1 = 0;
+  #smF2 = 0;
+  #smRes: number | null = null;
+  #resHist: number[] = [];
+  #resTick = 0;
 
   get sampleRate(): number { return this.#ctx?.sampleRate ?? 44100; }
 
@@ -90,6 +98,9 @@ class AudioEngine {
     this.activeType         = null;
     this.activePreset       = null;
     this.smoothPitch        = null;
+    this.resonance          = null;
+    this.resonanceVowel     = null;
+    this.#smF1 = 0; this.#smF2 = 0; this.#smRes = null; this.#resHist.length = 0;
     this.pitchHint          = '';
     this.pitchInTarget      = false;
     this.isRecording        = false;
@@ -426,19 +437,79 @@ class AudioEngine {
       this.#analyser.getFloatFrequencyData(this.frequencyData);
       this.#analyser.getFloatTimeDomainData(this.timeDomainData);
       this.#updatePitch();
+      // Resonance is much heavier (formant scan + moving needle) and doesn't need
+      // 60 Hz — throttle it so it never competes with the pitch meter per frame.
+      if (this.#resTick++ % 3 === 0) this.#updateResonance();
       this.#updatePlaybackProgress();
       this.#collectSnapshot();
     };
     this.#animId = requestAnimationFrame(tick);
   }
 
+  // Find F1 (300–850 Hz) and F2 (900–2700 Hz) as peaks of the spectral
+  // ENVELOPE: we moving-average the magnitude over ~one F0 period so the search
+  // tracks the formant instead of jumping between individual pitch harmonics
+  // (the main source of frame-to-frame jitter).
+  #detectFormants(): { f1: number; f2: number } {
+    const data = this.frequencyData;
+    const hpb = this.sampleRate / (2 * data.length);
+    const W = Math.max(6, Math.round(150 / hpb)); // ~150 Hz envelope window, in bins
+    const peak = (loHz: number, hiHz: number): number => {
+      const lo = Math.max(1, Math.round(loHz / hpb));
+      const hi = Math.min(data.length - 1, Math.round(hiHz / hpb));
+      let bin = -1, max = -Infinity;
+      for (let i = lo; i <= hi; i++) {
+        let s = 0, n = 0;
+        for (let j = Math.max(lo, i - W); j <= Math.min(hi, i + W); j++) { s += data[j]; n++; }
+        const v = s / n;
+        if (v > max) { max = v; bin = i; }
+      }
+      return bin > 0 ? bin * hpb : 0;
+    };
+    return { f1: peak(300, 850), f2: peak(900, 2700) };
+  }
+
+  #updateResonance(): void {
+    // Only score voiced frames; otherwise hold/clear.
+    if (this.smoothPitch === null) {
+      this.#smF1 = 0; this.#smF2 = 0; this.#resHist.length = 0;
+      this.resonance = null; this.resonanceVowel = null;
+      return;
+    }
+    const { f1, f2 } = this.#detectFormants();
+    if (f1 <= 0 || f2 <= 0) return;
+    this.#smF1 = this.#smF1 ? 0.45 * f1 + 0.55 * this.#smF1 : f1;
+    this.#smF2 = this.#smF2 ? 0.45 * f2 + 0.55 * this.#smF2 : f2;
+    const r = computeResonance(this.#smF1, this.#smF2, this.resonanceVowel);
+    if (!r) return;
+
+    // Median filter over a short window removes outlier spikes with little lag,
+    // then a light EMA glides between values.
+    const h = this.#resHist;
+    h.push(r.pct);
+    if (h.length > 9) h.shift();
+    const med = [...h].sort((a, b) => a - b)[h.length >> 1];
+    this.#smRes = this.#smRes === null ? med : 0.35 * med + 0.65 * this.#smRes;
+    this.resonance = Math.round(this.#smRes);
+    this.resonanceVowel = r.vowel;
+  }
+
   #updatePitch(): void {
-    const raw = detectPitch(this.timeDomainData, this.sampleRate);
+    let raw = detectPitch(this.timeDomainData, this.sampleRate);
     if (raw === null) {
       this.smoothPitch   = null;
       this.pitchHint     = '';
       this.pitchInTarget = false;
       return;
+    }
+    // Octave-continuity guard: if this frame reads ~half or ~double the recent
+    // pitch, snap it to the octave consistent with the running estimate.
+    if (this.smoothPitch !== null) {
+      if (raw < this.smoothPitch * 0.6 && Math.abs(raw * 2 - this.smoothPitch) < Math.abs(raw - this.smoothPitch)) {
+        raw *= 2;
+      } else if (raw > this.smoothPitch * 1.7 && Math.abs(raw / 2 - this.smoothPitch) < Math.abs(raw - this.smoothPitch)) {
+        raw /= 2;
+      }
     }
     this.smoothPitch = this.smoothPitch === null ? raw : 0.3 * raw + 0.7 * this.smoothPitch;
     const hz = Math.round(this.smoothPitch);

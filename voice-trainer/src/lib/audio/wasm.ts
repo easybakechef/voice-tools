@@ -43,17 +43,36 @@ function detectPitchJS(buf: Float32Array, sr: number): number | null {
   for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
   if (Math.sqrt(rms / buf.length) < 0.01) return null;
 
-  let bestTau = -1, bestVal = -Infinity;
-  for (let tau = minP; tau <= maxP; tau++) {
-    const r = nsdf(buf, tau);
-    if (r > bestVal) { bestVal = r; bestTau = tau; }
-  }
-  if (bestVal < 0.4 || bestTau < 0) return null;
+  // NSDF across the search range.
+  const n = maxP - minP + 1;
+  const r = new Float32Array(n);
+  for (let t = minP; t <= maxP; t++) r[t - minP] = nsdf(buf, t);
 
-  const a = bestTau > 0             ? nsdf(buf, bestTau - 1) : 0;
-  const b =                           nsdf(buf, bestTau);
-  const c = bestTau < buf.length - 1 ? nsdf(buf, bestTau + 1) : 0;
+  // Collect local maxima and the overall peak value. (McLeod Pitch Method:
+  // octave errors come from taking the *tallest* peak — which is often the
+  // period-doubled one. Instead, take the FIRST peak that's nearly as tall.)
+  let maxVal = -Infinity;
+  const peaks: number[] = [];
+  for (let i = 1; i < n - 1; i++) {
+    if (r[i] > r[i - 1] && r[i] >= r[i + 1]) {
+      peaks.push(i);
+      if (r[i] > maxVal) maxVal = r[i];
+    }
+  }
+  if (peaks.length === 0 || maxVal < 0.4) return null;
+
+  const thresh = 0.88 * maxVal;
+  let chosen = peaks[0];
+  for (const p of peaks) {
+    if (r[p] >= thresh) { chosen = p; break; }
+  }
+
+  // Parabolic interpolation around the chosen peak.
+  const a = chosen > 0     ? r[chosen - 1] : r[chosen];
+  const b =                  r[chosen];
+  const c = chosen < n - 1 ? r[chosen + 1] : r[chosen];
   const denom = a - 2 * b + c;
-  const refined = denom !== 0 ? bestTau - 0.5 * (a - c) / denom : bestTau;
-  return sr / refined;
+  const offset = denom !== 0 ? -0.5 * (a - c) / denom : 0;
+  const tau = (minP + chosen) + offset;
+  return tau > 0 ? sr / tau : null;
 }

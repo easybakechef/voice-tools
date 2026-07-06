@@ -156,11 +156,11 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
+site_url = "http://localhost:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = ["http://localhost:5173", "http://127.0.0.1:5173"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -180,7 +180,7 @@ enable_signup = true
 # layered on later without changing the data model.
 enable_anonymous_sign_ins = true
 # Allow/disallow testing manual linking of accounts
-enable_manual_linking = false
+enable_manual_linking = true
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
 minimum_password_length = 6
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
@@ -226,7 +226,9 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# On so email claims/changes are verified (emails are caught locally by Mailpit
+# at http://localhost:54324 — click the link there to complete the flow).
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -336,6 +338,25 @@ url = ""
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
+
+# ── Google ──  Flip enabled = true once you've registered an OAuth client and
+# exported GOOGLE_CLIENT_ID / GOOGLE_SECRET (see AUTH_SETUP.md). Redirect URI on
+# the Google side: http://127.0.0.1:54321/auth/v1/callback
+[auth.external.google]
+enabled = false
+client_id = "env(GOOGLE_CLIENT_ID)"
+secret = "env(GOOGLE_SECRET)"
+redirect_uri = ""
+skip_nonce_check = true
+
+# ── Discord ──  Flip enabled = true once you've registered an application and
+# exported DISCORD_CLIENT_ID / DISCORD_SECRET (see AUTH_SETUP.md). Redirect URI
+# on the Discord side: http://127.0.0.1:54321/auth/v1/callback
+[auth.external.discord]
+enabled = false
+client_id = "env(DISCORD_CLIENT_ID)"
+secret = "env(DISCORD_SECRET)"
+redirect_uri = ""
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
