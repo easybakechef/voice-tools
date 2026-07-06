@@ -1,0 +1,20 @@
+[package]
+name = "pipeline"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+anyhow = "1"
+voice-analysis = { path = "../voice-analysis" }
+ureq = "2"
+flate2 = "1"
+tar = "0.4"
+
+[[bin]]
+name = "metric"
+path = "src/bin/metric.rs"
+
+[[bin]]
+name = "scan"
+path = "src/bin/scan.rs"

@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["crates/voice-analysis", "crates/pipeline"]
+
+[profile.release]
+opt-level = 3

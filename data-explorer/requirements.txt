@@ -1,0 +1,9 @@
+numpy
+pandas
+praat-parselmouth
+soundfile
+streamlit
+plotly
+requests
+tqdm
+scikit-learn
