@@ -23,13 +23,35 @@
 
 {#if o.resonance}
   <div class="panel">
-    <h3 style="margin-top:0">Resonance metric (VTL from F1–F4)</h3>
+    <h3 style="margin-top:0">Resonance metric (rich vocal-tract envelope)</h3>
+    <p class="muted" style="margin-top:0">
+      F1–F5 + VTL + LPC-cepstrum + spectral shape + formant-dynamics (VISC/movement) +
+      sibilant /s/ moments — the full resonance envelope, how it moves, and the fricatives,
+      not just a few formant peaks. Pitch-independent: measured on the pitch-matched set
+      where F0 is uninformative. A big jump over the old single VTL number.
+    </p>
     <div class="cards">
       <div class="card"><div class="big">{o.resonance.auc.toFixed(2)}</div><div class="label">AUC (pitch-matched)</div></div>
+      <div class="card"><div class="big" style="color:var(--muted)">{o.resonance.vtlAuc.toFixed(2)}</div><div class="label">old VTL-only AUC</div></div>
       <div class="card"><div class="big">{(o.resonance.accuracy * 100).toFixed(0)}%</div><div class="label">accuracy</div></div>
       <div class="card"><div class="big" style="color:var(--male)">{o.resonance.vtlMale?.toFixed(1)}</div><div class="label">male VTL (cm)</div></div>
       <div class="card"><div class="big" style="color:var(--female)">{o.resonance.vtlFemale?.toFixed(1)}</div><div class="label">female VTL (cm)</div></div>
       <div class="card"><div class="big" style="color:var(--bad)">{fmt(o.resonance.hardCount)}</div><div class="label"><a href="/hard-cases">misclassified →</a></div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">Combo classifier (pitch + formants)</h3>
+    <p class="muted" style="margin-top:0">
+      Adding F0 to the formant features lifts the full-pool classifier well above either
+      alone — but barely moves the pitch-matched set, where pitch is uninformative by design.
+    </p>
+    <div class="cards">
+      <div class="card"><div class="big">{o.resonance.comboFullAuc.toFixed(2)}</div><div class="label">combo AUC (full pool)</div></div>
+      <div class="card"><div class="big" style="color:var(--muted)">{o.resonance.fullAuc.toFixed(2)}</div><div class="label">resonance-only (full pool)</div></div>
+      <div class="card"><div class="big">{o.resonance.comboAuc.toFixed(2)}</div><div class="label">combo AUC (pitch-matched)</div></div>
+      <div class="card"><div class="big">{(o.resonance.comboAccuracy * 100).toFixed(0)}%</div><div class="label">combo accuracy</div></div>
+      <div class="card"><div class="big" style="color:var(--bad)">{fmt(o.resonance.comboHardCount)}</div><div class="label"><a href="/hard-cases?model=combo">combo misclassified →</a></div></div>
     </div>
   </div>
 {:else}

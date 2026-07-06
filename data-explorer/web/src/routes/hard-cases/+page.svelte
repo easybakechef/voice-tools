@@ -4,30 +4,42 @@
 
   let mode = $state(data.mode);
   let gender = $state(data.gender);
+  let model = $state(data.model);
+
   function apply() {
     const p = new URLSearchParams();
     if (mode !== 'all') p.set('mode', mode);
     if (gender !== 'any') p.set('gender', gender);
+    if (model !== 'resonance') p.set('model', model);
     goto(`/hard-cases?${p.toString()}`);
   }
+
+  // pick the fields for the active model
+  const isCombo = $derived(data.model === 'combo');
+  const pred = (r: any) => (isCombo ? r.combo_pred : r.pred);
+  const prob = (r: any) => (isCombo ? r.combo_prob : r.prob_female);
+  const ok = (r: any) => (isCombo ? r.combo_correct : r.correct);
 </script>
 
 <h2>Where the metric struggles</h2>
 <p class="muted">
-  These are the speakers in the overlap zone — where the vocal-tract-length metric
-  either <b>misclassifies</b> gender or is <b>near its decision threshold</b> (low margin).
-  This is the real ambiguity that pitch also can't resolve: short-tract men and
-  long-tract women whose resonance sits on the wrong side.
+  The overlap zone — speakers where the classifier either <b>misclassifies</b> gender
+  or sits <b>near its decision threshold</b> (low margin). The <b>resonance</b> model is the
+  rich vocal-tract envelope (F1–F5 + VTL + LPC-cepstrum + spectral shape + formant-dynamics
+  + sibilant /s/ moments, no pitch); the <b>combo</b> adds pitch level and range. On these already-ambiguous voices
+  the combo helps only marginally — where pitch fails, resonance is doing the work.
 </p>
 
 {#if !data.available}
   <div class="panel">
-    <p class="muted">
-      Resonance table not built yet. Run the Rust metric step to populate hard cases.
-    </p>
+    <p class="muted">Resonance table not built yet. Run the Rust metric step to populate hard cases.</p>
   </div>
 {:else}
   <div class="controls">
+    <select bind:value={model} onchange={apply}>
+      <option value="resonance">resonance (rich envelope)</option>
+      <option value="combo">combo (+ pitch)</option>
+    </select>
     <select bind:value={mode} onchange={apply}>
       <option value="all">misclassified or ambiguous</option>
       <option value="wrong">misclassified only</option>
@@ -38,7 +50,10 @@
       <option value="male">male</option>
       <option value="female">female</option>
     </select>
-    <span class="muted">AUC {data.auc.toFixed(2)} · VTL threshold ≈ {data.threshold.toFixed(1)} cm · {data.rows.length} shown</span>
+    <span class="muted">
+      {isCombo ? 'combo' : 'resonance'} matched-AUC {data.auc.toFixed(2)} · full-pool AUC
+      {data.fullAuc.toFixed(2)} · {data.rows.length} shown
+    </span>
   </div>
 
   <table>
@@ -55,15 +70,15 @@
         <tr>
           <td><a href={`/speaker/${r.speaker}`}>{r.speaker}</a></td>
           <td><span class="pill {r.gender}">{r.gender}</span></td>
-          <td><span class="pill {r.pred}">{r.pred}</span></td>
+          <td><span class="pill {pred(r)}">{pred(r)}</span></td>
           <td class="num">{r.vtl?.toFixed(1)}</td>
           <td class="num">{r.f0?.toFixed(0)}</td>
           <td class="num">{r.f1?.toFixed(0)}</td>
           <td class="num">{r.f2?.toFixed(0)}</td>
           <td class="num">{r.f3?.toFixed(0)}</td>
           <td class="num">{r.f4?.toFixed(0)}</td>
-          <td class="num">{r.prob_female?.toFixed(2)}</td>
-          <td><span class="pill {r.correct ? 'good' : 'bad'}">{r.correct ? 'ok' : 'wrong'}</span></td>
+          <td class="num">{prob(r)?.toFixed(2)}</td>
+          <td><span class="pill {ok(r) ? 'good' : 'bad'}">{ok(r) ? 'ok' : 'wrong'}</span></td>
           <td><audio controls preload="none" src={`/audio-speaker?speaker=${encodeURIComponent(r.speaker)}`}></audio></td>
         </tr>
       {/each}

@@ -51,7 +51,20 @@ root finding → 8 CPU-min for the whole kept set.
 - dashboard:          cd web && npm run build && node build/index.js   (or npm run dev)
 - validate vs Praat:  .venv/bin/python -m analysis.validate_rust
 
-## Metric recap (target to preserve)
-VTL (cm) from F1-F4: fit Fn = (2n-1)·c/(4L), c=35000 cm/s → L = c/(4·slope),
-slope = Σ(2n-1)·Fn / Σ(2n-1)². Matched-set: male 16.5±0.8, female 15.5±0.6 cm,
-Cohen's d≈1.4, AUC≈0.85, ~80% best-threshold accuracy.
+## Metric recap
+Old: VTL (cm) from F1-F4, matched-AUC ~0.87, ~80% accuracy.
+
+NEW (2026-07, literature-driven — see analysis/eval_rich.py): a richer, still
+pitch-independent resonance representation. Features per speaker:
+F1-F5, VTL, LPC-cepstrum c1-c12 (the full vocal-tract envelope, not just formant
+peaks), and spectral shape (centroid, tilt, rolloff, H1-H2). Logistic (linear)
+on these:
+  - resonance (rich, NO pitch): matched-AUC 0.93, full 0.94, accuracy 86%
+  - combo (F0 + rich):          matched 0.93, full 0.945
+vs old VTL-only matched 0.87. LPC-cepstrum was the big win (0.90 alone). Source
+spectral tilt / H1-H2 weak on LibriSpeech read speech. A linear model matches
+gradient boosting, so no black box needed.
+
+Rust `metric` binary now fits/stores rich resonance (primary) + combo; dashboard
+shows both and the hard-cases page toggles between them. Extraction of the wide
+feature set: rust/target/release/extract ... analysis/rich_features.csv.

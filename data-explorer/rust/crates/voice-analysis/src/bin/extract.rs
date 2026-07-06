@@ -62,26 +62,59 @@ fn main() -> anyhow::Result<()> {
                 return None;
             }
             let gender = gmap.get(spk).cloned().unwrap_or_default();
-            let f0 = agg(&feats, |f| f.f0);
-            let f1 = agg(&feats, |f| f.f1);
-            let f2 = agg(&feats, |f| f.f2);
-            let f3 = agg(&feats, |f| f.f3);
-            let f4 = agg(&feats, |f| f.f4);
-            Some(format!(
-                "ls-{spk},{gender},{},{},{},{},{},{}",
-                feats.len(), cell(f0), cell(f1), cell(f2), cell(f3), cell(f4)
-            ))
+            let mut fields: Vec<String> = vec![
+                format!("ls-{spk}"),
+                gender,
+                feats.len().to_string(),
+                cell(agg(&feats, |f| f.f0)),
+                cell(agg(&feats, |f| f.f1)),
+                cell(agg(&feats, |f| f.f2)),
+                cell(agg(&feats, |f| f.f3)),
+                cell(agg(&feats, |f| f.f4)),
+                cell(agg(&feats, |f| f.f5)),
+                cell(agg(&feats, |f| f.vtl_cm())),
+            ];
+            // LPCC: average each coefficient across clips (each is already a frame-mean)
+            for k in 0..voice_analysis::N_LPCC {
+                fields.push(cell(agg(&feats, |f| f.lpcc.get(k).copied())));
+            }
+            fields.push(cell(agg(&feats, |f| f.centroid)));
+            fields.push(cell(agg(&feats, |f| f.tilt)));
+            fields.push(cell(agg(&feats, |f| f.rolloff)));
+            fields.push(cell(agg(&feats, |f| f.h1h2)));
+            fields.push(cell(agg(&feats, |f| f.vsa)));
+            fields.push(cell(agg(&feats, |f| f.f1_disp)));
+            fields.push(cell(agg(&feats, |f| f.f2_disp)));
+            fields.push(cell(agg(&feats, |f| f.vsa_hull)));
+            fields.push(cell(agg(&feats, |f| f.vsa_hull_norm)));
+            fields.push(cell(agg(&feats, |f| f.f0_range)));
+            fields.push(cell(agg(&feats, |f| f.traj_f12)));
+            fields.push(cell(agg(&feats, |f| f.spec_rate)));
+            fields.push(cell(agg(&feats, |f| f.f2_range)));
+            fields.push(cell(agg(&feats, |f| f.sib_m1)));
+            fields.push(cell(agg(&feats, |f| f.sib_m2)));
+            fields.push(cell(agg(&feats, |f| f.sib_m3)));
+            fields.push(cell(agg(&feats, |f| f.sib_m4)));
+            fields.push(cell(agg(&feats, |f| f.sib_hi)));
+            fields.push(cell(agg(&feats, |f| f.sib_peak)));
+            Some(fields.join(","))
         })
         .collect();
     rows.sort();
 
-    let mut buf = String::from("speaker,gender,n_clips,f0,f1,f2,f3,f4\n");
+    let mut header = String::from("speaker,gender,n_clips,f0,f1,f2,f3,f4,f5,vtl");
+    for k in 1..=voice_analysis::N_LPCC {
+        header.push_str(&format!(",c{k}"));
+    }
+    header.push_str(",centroid,tilt,rolloff,h1h2,vsa,f1_disp,f2_disp,vsa_hull,vsa_hull_norm,f0_range,traj_f12,spec_rate,f2_range,sib_m1,sib_m2,sib_m3,sib_m4,sib_hi,sib_peak\n");
+    let ncols = header.trim_end().split(',').count();
+    let mut buf = header;
     for r in &rows {
         buf.push_str(r);
         buf.push('\n');
     }
     std::fs::write(out_csv, buf)?;
-    eprintln!("wrote {} speakers → {out_csv}", rows.len());
+    eprintln!("wrote {} speakers ({ncols} cols) → {out_csv}", rows.len());
     Ok(())
 }
 

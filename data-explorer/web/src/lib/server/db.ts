@@ -31,7 +31,13 @@ export type Overview = {
     vtlFemale: number;
     accuracy: number;
     auc: number;
+    fullAuc: number;
+    vtlAuc: number;
     hardCount: number;
+    comboAuc: number;
+    comboFullAuc: number;
+    comboAccuracy: number;
+    comboHardCount: number;
   };
 };
 
@@ -69,19 +75,27 @@ export function overview(): Overview {
                 avg(CASE WHEN gender='male' THEN vtl END) vtlMale,
                 avg(CASE WHEN gender='female' THEN vtl END) vtlFemale,
                 avg(correct) accuracy,
-                sum(CASE WHEN correct=0 THEN 1 ELSE 0 END) hardCount
+                sum(CASE WHEN correct=0 THEN 1 ELSE 0 END) hardCount,
+                avg(combo_correct) comboAccuracy,
+                sum(CASE WHEN combo_correct=0 THEN 1 ELSE 0 END) comboHardCount
          FROM resonance`
       )
       .get() as any;
-    const auc = (d.prepare('SELECT auc FROM resonance_meta LIMIT 1').get() as any)?.auc ?? 0;
+    const meta = (d.prepare('SELECT * FROM resonance_meta LIMIT 1').get() as any) ?? {};
     out.resonance = {
       speakers: r.speakers,
       matched: r.matched ?? 0,
       vtlMale: r.vtlMale,
       vtlFemale: r.vtlFemale,
       accuracy: r.accuracy,
-      auc,
-      hardCount: r.hardCount
+      auc: meta.auc ?? 0,
+      fullAuc: meta.full_auc ?? 0,
+      vtlAuc: meta.vtl_auc ?? 0,
+      hardCount: r.hardCount,
+      comboAuc: meta.combo_auc ?? 0,
+      comboFullAuc: meta.combo_full_auc ?? 0,
+      comboAccuracy: r.comboAccuracy,
+      comboHardCount: r.comboHardCount
     };
   }
   return out;
@@ -183,27 +197,50 @@ export type ResonanceRow = {
   f2: number;
   f3: number;
   f4: number;
+  f5: number;
   vtl: number;
+  tilt: number;
+  h1h2: number;
   prob_female: number;
   pred: string;
   correct: number;
   margin: number;
   in_matched: number;
+  combo_prob: number;
+  combo_pred: string;
+  combo_correct: number;
+  combo_margin: number;
 };
 
-/** Samples the metric struggles on: misclassified or low-margin (ambiguous). */
+export type HardModel = 'resonance' | 'combo';
+
+/** Samples the metric struggles on: misclassified or low-margin (ambiguous).
+ *  `model` chooses which classifier: 'vtl' (resonance only) or 'combo' (pitch+resonance). */
 export function hardCases(opts: {
   mode?: 'wrong' | 'ambiguous' | 'all';
   gender?: string;
+  model?: HardModel;
   limit?: number;
-}): { rows: ResonanceRow[]; available: boolean; auc: number; threshold: number } {
-  if (!hasResonance()) return { rows: [], available: false, auc: 0, threshold: 0 };
-  const meta = (db().prepare('SELECT auc, threshold FROM resonance_meta LIMIT 1').get() as any) ?? {};
+}): {
+  rows: ResonanceRow[];
+  available: boolean;
+  model: HardModel;
+  auc: number;
+  fullAuc: number;
+  threshold: number;
+} {
+  if (!hasResonance())
+    return { rows: [], available: false, model: 'resonance', auc: 0, fullAuc: 0, threshold: 0 };
+  const meta = (db().prepare('SELECT * FROM resonance_meta LIMIT 1').get() as any) ?? {};
+  const model: HardModel = opts.model === 'combo' ? 'combo' : 'resonance';
+  const correctCol = model === 'combo' ? 'combo_correct' : 'correct';
+  const marginCol = model === 'combo' ? 'combo_margin' : 'margin';
+
   const where: string[] = [];
   const args: any[] = [];
-  if (opts.mode === 'wrong') where.push('correct = 0');
-  else if (opts.mode === 'ambiguous') where.push('margin <= 0.15');
-  else where.push('(correct = 0 OR margin <= 0.15)');
+  if (opts.mode === 'wrong') where.push(`${correctCol} = 0`);
+  else if (opts.mode === 'ambiguous') where.push(`${marginCol} <= 0.15`);
+  else where.push(`(${correctCol} = 0 OR ${marginCol} <= 0.15)`);
   if (opts.gender && opts.gender !== 'any') {
     where.push('gender = ?');
     args.push(opts.gender);
@@ -211,8 +248,15 @@ export function hardCases(opts: {
   const rows = db()
     .prepare(
       `SELECT * FROM resonance WHERE ${where.join(' AND ')}
-       ORDER BY margin ASC LIMIT ?`
+       ORDER BY ${marginCol} ASC LIMIT ?`
     )
     .all(...args, Math.min(opts.limit ?? 200, 1000)) as ResonanceRow[];
-  return { rows, available: true, auc: meta.auc ?? 0, threshold: meta.threshold ?? 0 };
+  return {
+    rows,
+    available: true,
+    model,
+    auc: model === 'combo' ? meta.combo_auc ?? 0 : meta.auc ?? 0,
+    fullAuc: model === 'combo' ? meta.combo_full_auc ?? 0 : meta.full_auc ?? 0,
+    threshold: meta.threshold ?? 0
+  };
 }
